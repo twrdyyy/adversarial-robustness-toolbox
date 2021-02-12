@@ -76,7 +76,7 @@ class PoisoningAttackAdaptiveDPA(PoisoningAttackBlackBox):
         if num_poison == 0:
             raise ValueError("Must input at least one poison point.")
         poisoned = np.copy(x)
-        print(f"shape of all poisons: {x.shape}")
+        # print(f"shape of all poisons: {x.shape}")
 
         if callable(self.perturbation):
             poisoned = self.perturbation(poisoned)
@@ -89,20 +89,19 @@ class PoisoningAttackAdaptiveDPA(PoisoningAttackBlackBox):
         # use top left 10 pixels as modifiable region
         num_partitions = 26
         final_poisoned = []
-        for idx, poison in enumerate(poisoned):
-            # TODO: ensure sum(x)mod(k) == group
-            print(poison.shape)
-            group = idx % num_partitions
-            feature_sum = np.sum(poison * 255).astype(int)
-            group_before = feature_sum % num_partitions
-            pixels_needed = group - group_before if group >= group_before else num_partitions - group_before + group
-            new_poison = edit_in_modifiable_region(poison, pixels_needed)
-            print(f"group before: {group_before}")
-            print(f"pixels needed: {pixels_needed}")
-            print(f"assigned group: {group}")
-            print(f"new poison mod {num_partitions}: {np.sum((new_poison * 255).astype(int)) % num_partitions} (should match assigned)")
-            print(f"new poison shape: {new_poison.shape}")
-            final_poisoned.append(edit_in_modifiable_region(poison, pixels_needed))
+        # for idx, poison in enumerate(poisoned):
+        # TODO: ensure sum(poisoned)mod(k) == group
+        group = np.random.randint(num_partitions)
+        feature_sum = np.sum(poisoned * 255).astype(int)
+        group_before = feature_sum % num_partitions
+        pixels_needed = group - group_before if group >= group_before else num_partitions - group_before + group
+        new_poison = edit_in_modifiable_region(poisoned, pixels_needed)
+        print(f"group before: {group_before}")
+        print(f"pixels needed: {pixels_needed}")
+        print(f"assigned group: {group}")
+        print(f"new poison mod {num_partitions}: {np.sum((new_poison * 255).astype(int)) % num_partitions} (should match assigned)")
+        print(f"new poison shape: {new_poison.shape}")
+        final_poisoned.append(edit_in_modifiable_region(poisoned, pixels_needed))
 
         return np.array(final_poisoned), y_attack
 
@@ -121,19 +120,19 @@ def edit_in_modifiable_region(x: np.ndarray, pixels_needed: int, max_iters=100):
     """
     print(x.shape)
     pixel = 1.0 / 255
-    num_channels = x.shape[2]
+    num_channels = x.shape[0]
     i = 1
     while pixels_needed >= 1 and i < max_iters:
         random_x = np.random.randint(10)
         random_y = np.random.randint(10)
-        # random_c = np.random.randint(num_channels)
-        # if x[random_x][random_y][random_c] < 1 - pixel:
-        if x[random_x][random_y] <= 1 - pixel:
-            print(f"inserted point at {random_x}, {random_y}")#", {random_c}")
-            # x[random_x][random_y][random_c] += pixel
-            x[random_x][random_y] += pixel
+        random_c = np.random.randint(num_channels)
+        if x[random_c][random_x][random_y] < 1 - pixel:
+        # if x[random_x][random_y] <= 1 - pixel:
+            print(f"inserted point at {random_x}, {random_y}, {random_c}")
+            x[random_c][random_x][random_y] += pixel
+            # x[random_x][random_y] += pixel
             pixels_needed -= 1
         i += 1
     if i == max_iters:
-        print("could ")
+        print(f"max_iters reached: could not find pixels to modify, needed {pixels_needed} more")
     return x
