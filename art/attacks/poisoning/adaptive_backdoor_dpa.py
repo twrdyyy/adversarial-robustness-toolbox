@@ -88,7 +88,6 @@ class PoisoningAttackAdaptiveDPA(PoisoningAttackBlackBox):
 
         # use top left 10 pixels as modifiable region
         num_partitions = 26
-        final_poisoned = []
         # for idx, poison in enumerate(poisoned):
         # TODO: ensure sum(poisoned)mod(k) == group
         group = np.random.randint(num_partitions)
@@ -101,9 +100,8 @@ class PoisoningAttackAdaptiveDPA(PoisoningAttackBlackBox):
         print(f"assigned group: {group}")
         print(f"new poison mod {num_partitions}: {np.sum((new_poison * 255).astype(int)) % num_partitions} (should match assigned)")
         print(f"new poison shape: {new_poison.shape}")
-        final_poisoned.append(edit_in_modifiable_region(poisoned, pixels_needed))
 
-        return np.array(final_poisoned), y_attack
+        return new_poison, y_attack
 
     def _check_params(self) -> None:
         if not (callable(self.perturbation) or all((callable(perturb) for perturb in self.perturbation))):
