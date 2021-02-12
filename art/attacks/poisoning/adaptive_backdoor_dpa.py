@@ -76,6 +76,7 @@ class PoisoningAttackAdaptiveDPA(PoisoningAttackBlackBox):
         if num_poison == 0:
             raise ValueError("Must input at least one poison point.")
         poisoned = np.copy(x)
+        print(f"shape of all poisons: {x.shape}")
 
         if callable(self.perturbation):
             poisoned = self.perturbation(poisoned)
@@ -110,17 +111,19 @@ class PoisoningAttackAdaptiveDPA(PoisoningAttackBlackBox):
             raise ValueError("Perturbation must be a function or a list of functions.")
 
 
-def edit_in_modifiable_region(x: np.ndarray, pixels_needed: int):
+def edit_in_modifiable_region(x: np.ndarray, pixels_needed: int, max_iters=100):
     """
     Randomly insert pixel values in the modifiable region
     :param x: A poisoned image
     :param pixels_needed: The number of pixels still needed to be added to the image
+    :param max_iters: The maximum number of iterations to run
     :return: The newly poisoned image1
     """
     print(x.shape)
     pixel = 1.0 / 255
-    # num_channels = x.shape[2]
-    while pixels_needed >= 1:
+    num_channels = x.shape[2]
+    i = 1
+    while pixels_needed >= 1 and i < max_iters:
         random_x = np.random.randint(10)
         random_y = np.random.randint(10)
         # random_c = np.random.randint(num_channels)
@@ -130,5 +133,7 @@ def edit_in_modifiable_region(x: np.ndarray, pixels_needed: int):
             # x[random_x][random_y][random_c] += pixel
             x[random_x][random_y] += pixel
             pixels_needed -= 1
-
+        i += 1
+    if i == max_iters:
+        print("could ")
     return x
