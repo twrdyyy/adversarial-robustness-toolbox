@@ -6,6 +6,7 @@ export TF_CPP_MIN_LOG_LEVEL="3"
 
 # --------------------------------------------------------------------------------------------------------------- TESTS
 
+
 #NOTE: All the tests should be ran within this loop. All other tests are legacy tests that must be
 # made framework independent to be incorporated within this loop
 frameworkList=("tensorflow" "keras" "pytorch" "scikitlearn" "mxnet" "kerastf")
@@ -82,10 +83,8 @@ else
                         "tests/attacks/test_spatial_transformation.py" \
                         "tests/attacks/test_zoo.py" \
                         "tests/attacks/test_pixel_attack.py" \
-                        "tests/attacks/test_wasserstein.py" \
-                        "tests/attacks/test_shapeshifter.py" \
-                        "tests/attacks/test_targeted_universal_perturbation.py" \
-                        "tests/attacks/test_simba.py" )
+                        "tests/attacks/test_threshold_attack.py" \
+                        "tests/attacks/test_shapeshifter.py")
 
     declare -a classifiers=("tests/estimators/certification/test_randomized_smoothing.py" \
                             "tests/estimators/classification/test_blackbox.py" \
