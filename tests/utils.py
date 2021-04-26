@@ -1679,3 +1679,11 @@ def master_seed(seed=1234, set_random=True, set_numpy=True, set_tensorflow=False
                 torch.cuda.manual_seed_all(seed)
         except ImportError:
             logger.info("Could not set random seed for PyTorch.")
+
+
+def filter_out_non_supported_kwargs(kwargs, supported_keywords):
+    new_kwargs = {}
+    for key, value in kwargs.items():
+        if key in supported_keywords:
+            new_kwargs[key] = value
+    return new_kwargs

@@ -39,7 +39,7 @@ then
     if [[ $? -ne 0 ]]; then exit_code=1; echo "Failed attacks/poison tests"; fi
 
     pytest --cov-report=xml --cov=art --cov-append  -q -vv -s tests/attacks/evasion/ --framework=$framework  --skip_travis=True --durations=0
-    if [[ $? -ne 0 ]]; then exit_code=1; echo "Failed attacks/evasion/test_shadow_attack.py"; fi
+    if [[ $? -ne 0 ]]; then exit_code=1; echo "Failed attacks/evasion/"; fi
 
     pytest --cov-report=xml --cov=art --cov-append  -q -vv tests/estimators/speech_recognition/ --framework=$framework  --skip_travis=True --durations=0
     if [[ $? -ne 0 ]]; then exit_code=1; echo "Failed estimators/speech_recognition tests"; fi
@@ -76,7 +76,6 @@ else
                         "tests/attacks/test_input_filter.py" \
                         "tests/attacks/test_hop_skip_jump.py" \
                         "tests/attacks/test_iterative_method.py" \
-                        "tests/attacks/test_knockoff_nets.py" \
                         "tests/attacks/test_newtonfool.py" \
                         "tests/attacks/test_projected_gradient_descent.py" \
                         "tests/attacks/test_saliency_map.py" \
