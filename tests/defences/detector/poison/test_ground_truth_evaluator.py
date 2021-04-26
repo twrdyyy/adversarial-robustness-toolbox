@@ -20,203 +20,233 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import json
 import logging
 import pprint
-import unittest
+
+import pytest
 
 from art.defences.detector.poison import GroundTruthEvaluator
-
-from tests.utils import master_seed
+from tests.utils import ARTTestException
 
 logger = logging.getLogger(__name__)
 
+n_classes = 3
+n_dp = 10
+n_dp_mix = 5
 
-class TestGroundTruth(unittest.TestCase):
-    def setUp(self):
-        master_seed(seed=1234)
 
-    @classmethod
-    def setUpClass(cls):
-        cls.evaluator = GroundTruthEvaluator()
-        cls.n_classes = 3
-        cls.n_dp = 10
-        cls.n_dp_mix = 5
+@pytest.fixture()
+def get_eval():
+    evaluator = GroundTruthEvaluator()
 
-        cls.is_clean_all_clean = [[] for _ in range(cls.n_classes)]
-        cls.is_clean_all_poison = [[] for _ in range(cls.n_classes)]
-        cls.is_clean_mixed = [[] for _ in range(cls.n_classes)]
-        cls.is_clean_comp_mix = [[] for _ in range(cls.n_classes)]
+    is_clean_all_clean = [[] for _ in range(n_classes)]
+    is_clean_all_poison = [[] for _ in range(n_classes)]
+    is_clean_mixed = [[] for _ in range(n_classes)]
+    is_clean_comp_mix = [[] for _ in range(n_classes)]
 
-        for i in range(cls.n_classes):
-            cls.is_clean_all_clean[i] = [1] * cls.n_dp
-            cls.is_clean_all_poison[i] = [0] * cls.n_dp
-            cls.is_clean_mixed[i] = [1, 0, 0, 1, 0, 1, 1, 1, 0, 0]
-            cls.is_clean_comp_mix[i] = [0, 1, 1, 0, 1, 0, 0, 0, 1, 1]
+    for i in range(n_classes):
+        is_clean_all_clean[i] = [1] * n_dp
+        is_clean_all_poison[i] = [0] * n_dp
+        is_clean_mixed[i] = [1, 0, 0, 1, 0, 1, 1, 1, 0, 0]
+        is_clean_comp_mix[i] = [0, 1, 1, 0, 1, 0, 0, 0, 1, 1]
 
-    def test_analyze_correct_all_clean(self):
+    return evaluator, is_clean_all_clean, is_clean_all_poison, is_clean_mixed
+
+
+@pytest.mark.framework_agnostic
+def test_analyze_correct_all_clean(art_warning, get_eval):
+    try:
+        evaluator, is_clean_all_clean, _, _ = get_eval
+
         # perfect detection all data is actually clean:
-        errors_by_class, conf_matrix_json = self.evaluator.analyze_correctness(
-            self.is_clean_all_clean, self.is_clean_all_clean
+        errors_by_class, conf_matrix_json = evaluator.analyze_correctness(
+            is_clean_all_clean, is_clean_all_clean
         )
 
         json_object = json.loads(conf_matrix_json)
-        self.assertEqual(len(json_object.keys()), self.n_classes)
-        self.assertEqual(len(errors_by_class), self.n_classes)
+        assert len(json_object.keys()) == n_classes
+        assert len(errors_by_class) == n_classes
 
-        # print(json_object)
-        for i in range(self.n_classes):
+        for i in range(n_classes):
             res_class_i = json_object["class_" + str(i)]
-            self.assertEqual(res_class_i["TruePositive"]["rate"], "N/A")
-            self.assertEqual(res_class_i["TrueNegative"]["rate"], 100)
-            self.assertEqual(res_class_i["FalseNegative"]["rate"], "N/A")
-            self.assertEqual(res_class_i["FalsePositive"]["rate"], 0)
+            assert res_class_i["TruePositive"]["rate"] == "N/A"
+            assert res_class_i["TrueNegative"]["rate"] == 100
+            assert res_class_i["FalseNegative"]["rate"] == "N/A"
+            assert res_class_i["FalsePositive"]["rate"] == 0
 
-            self.assertEqual(res_class_i["TruePositive"]["numerator"], 0)
-            self.assertEqual(res_class_i["TruePositive"]["denominator"], 0)
+            assert res_class_i["TruePositive"]["numerator"] == 0
+            assert res_class_i["TruePositive"]["denominator"] == 0
 
-            self.assertEqual(res_class_i["TrueNegative"]["numerator"], self.n_dp)
-            self.assertEqual(res_class_i["TrueNegative"]["denominator"], self.n_dp)
+            assert res_class_i["TrueNegative"]["numerator"] == n_dp
+            assert res_class_i["TrueNegative"]["denominator"] == n_dp
 
-            self.assertEqual(res_class_i["FalseNegative"]["numerator"], 0)
-            self.assertEqual(res_class_i["FalseNegative"]["denominator"], 0)
+            assert res_class_i["FalseNegative"]["numerator"] == 0
+            assert res_class_i["FalseNegative"]["denominator"] == 0
 
-            self.assertEqual(res_class_i["FalsePositive"]["numerator"], 0)
-            self.assertEqual(res_class_i["FalsePositive"]["denominator"], self.n_dp)
+            assert res_class_i["FalsePositive"]["numerator"] == 0
+            assert res_class_i["FalsePositive"]["denominator"] == n_dp
 
             # all errors_by_class should be 1 (errors_by_class[i] = 1 if marked clean, is clean)
             for item in errors_by_class[i]:
-                self.assertEqual(item, 1)
+                assert item == 1
+    except ARTTestException as e:
+        art_warning(e)
 
-    def test_analyze_correct_all_poison(self):
+
+@pytest.mark.framework_agnostic
+def test_analyze_correct_all_poison(art_warning, get_eval):
+    try:
+        evaluator, _, is_clean_all_poison, _ = get_eval
         # perfect detection all data is actually poison
-        errors_by_class, conf_matrix_json = self.evaluator.analyze_correctness(
-            self.is_clean_all_poison, self.is_clean_all_poison
+        errors_by_class, conf_matrix_json = evaluator.analyze_correctness(
+            is_clean_all_poison, is_clean_all_poison
         )
 
         json_object = json.loads(conf_matrix_json)
-        self.assertEqual(len(json_object.keys()), self.n_classes)
-        self.assertEqual(len(errors_by_class), self.n_classes)
+        assert len(json_object.keys()) == n_classes
+        assert len(errors_by_class) == n_classes
 
         # print(json_object)
-        for i in range(self.n_classes):
+        for i in range(n_classes):
             res_class_i = json_object["class_" + str(i)]
-            self.assertEqual(res_class_i["TruePositive"]["rate"], 100)
-            self.assertEqual(res_class_i["TrueNegative"]["rate"], "N/A")
-            self.assertEqual(res_class_i["FalseNegative"]["rate"], 0)
-            self.assertEqual(res_class_i["FalsePositive"]["rate"], "N/A")
+            assert res_class_i["TruePositive"]["rate"] == 100
+            assert res_class_i["TrueNegative"]["rate"] == "N/A"
+            assert res_class_i["FalseNegative"]["rate"] == 0
+            assert res_class_i["FalsePositive"]["rate"] == "N/A"
 
-            self.assertEqual(res_class_i["TruePositive"]["numerator"], self.n_dp)
-            self.assertEqual(res_class_i["TruePositive"]["denominator"], self.n_dp)
+            assert res_class_i["TruePositive"]["numerator"] == n_dp
+            assert res_class_i["TruePositive"]["denominator"] == n_dp
 
-            self.assertEqual(res_class_i["TrueNegative"]["numerator"], 0)
-            self.assertEqual(res_class_i["TrueNegative"]["denominator"], 0)
+            assert res_class_i["TrueNegative"]["numerator"] == 0
+            assert res_class_i["TrueNegative"]["denominator"] == 0
 
-            self.assertEqual(res_class_i["FalseNegative"]["numerator"], 0)
-            self.assertEqual(res_class_i["FalseNegative"]["denominator"], self.n_dp)
+            assert res_class_i["FalseNegative"]["numerator"] == 0
+            assert res_class_i["FalseNegative"]["denominator"] == n_dp
 
-            self.assertEqual(res_class_i["FalsePositive"]["numerator"], 0)
-            self.assertEqual(res_class_i["FalsePositive"]["denominator"], 0)
+            assert res_class_i["FalsePositive"]["numerator"] == 0
+            assert res_class_i["FalsePositive"]["denominator"] == 0
 
             # all errors_by_class should be 0 (all_errors_by_class[i] = 0 if marked poison, is poison)
             for item in errors_by_class[i]:
-                self.assertEqual(item, 0)
+                assert item == 0
+    except ARTTestException as e:
+        art_warning(e)
 
-    def test_analyze_correct_mixed(self):
+
+@pytest.mark.framework_agnostic
+def test_analyze_correct_mixed(art_warning, get_eval):
+    try:
+        evaluator, _, _, is_clean_mixed = get_eval
         # perfect detection mixed
-        errors_by_class, conf_matrix_json = self.evaluator.analyze_correctness(self.is_clean_mixed, self.is_clean_mixed)
+        errors_by_class, conf_matrix_json = evaluator.analyze_correctness(is_clean_mixed, is_clean_mixed)
 
         json_object = json.loads(conf_matrix_json)
-        self.assertEqual(len(json_object.keys()), self.n_classes)
-        self.assertEqual(len(errors_by_class), self.n_classes)
+        assert len(json_object.keys()) == n_classes
+        assert len(errors_by_class) == n_classes
 
         # print(json_object)
-        for i in range(self.n_classes):
+        for i in range(n_classes):
             res_class_i = json_object["class_" + str(i)]
-            self.assertEqual(res_class_i["TruePositive"]["rate"], 100)
-            self.assertEqual(res_class_i["TrueNegative"]["rate"], 100)
-            self.assertEqual(res_class_i["FalseNegative"]["rate"], 0)
-            self.assertEqual(res_class_i["FalsePositive"]["rate"], 0)
+            assert res_class_i["TruePositive"]["rate"] == 100
+            assert res_class_i["TrueNegative"]["rate"] == 100
+            assert res_class_i["FalseNegative"]["rate"] == 0
+            assert res_class_i["FalsePositive"]["rate"] == 0
 
-            self.assertEqual(res_class_i["TruePositive"]["numerator"], self.n_dp_mix)
-            self.assertEqual(res_class_i["TruePositive"]["denominator"], self.n_dp_mix)
+            assert res_class_i["TruePositive"]["numerator"] == n_dp_mix
+            assert res_class_i["TruePositive"]["denominator"] == n_dp_mix
 
-            self.assertEqual(res_class_i["TrueNegative"]["numerator"], self.n_dp_mix)
-            self.assertEqual(res_class_i["TrueNegative"]["denominator"], self.n_dp_mix)
+            assert res_class_i["TrueNegative"]["numerator"] == n_dp_mix
+            assert res_class_i["TrueNegative"]["denominator"] == n_dp_mix
 
-            self.assertEqual(res_class_i["FalseNegative"]["numerator"], 0)
-            self.assertEqual(res_class_i["FalseNegative"]["denominator"], self.n_dp_mix)
+            assert res_class_i["FalseNegative"]["numerator"] == 0
+            assert res_class_i["FalseNegative"]["denominator"] == n_dp_mix
 
-            self.assertEqual(res_class_i["FalsePositive"]["numerator"], 0)
-            self.assertEqual(res_class_i["FalsePositive"]["denominator"], self.n_dp_mix)
+            assert res_class_i["FalsePositive"]["numerator"] == 0
+            assert res_class_i["FalsePositive"]["denominator"] == n_dp_mix
 
             # all errors_by_class should be 1 (errors_by_class[i] = 1 if marked clean, is clean)
             for j, item in enumerate(errors_by_class[i]):
-                self.assertEqual(item, self.is_clean_mixed[i][j])
+                assert item == is_clean_mixed[i][j]
+    except ARTTestException as e:
+        art_warning(e)
 
-    def test_analyze_fully_misclassified(self):
+
+@pytest.mark.framework_agnostic
+def test_analyze_fully_misclassified(art_warning, get_eval):
+    try:
         # Completely wrong
         # order parameters: analyze_correctness(assigned_clean_by_class, is_clean_by_class)
-        errors_by_class, conf_matrix_json = self.evaluator.analyze_correctness(
-            self.is_clean_all_clean, self.is_clean_all_poison
+        evaluator, is_clean_all_clean, is_clean_all_poison, _ = get_eval
+        errors_by_class, conf_matrix_json = evaluator.analyze_correctness(
+            is_clean_all_clean, is_clean_all_poison
         )
 
         json_object = json.loads(conf_matrix_json)
-        self.assertEqual(len(json_object.keys()), self.n_classes)
-        self.assertEqual(len(errors_by_class), self.n_classes)
+        assert len(json_object.keys()) == n_classes
+        assert len(errors_by_class) == n_classes
 
         print(json_object)
-        for i in range(self.n_classes):
+        for i in range(n_classes):
             res_class_i = json_object["class_" + str(i)]
-            self.assertEqual(res_class_i["TruePositive"]["rate"], 0)
-            self.assertEqual(res_class_i["TrueNegative"]["rate"], "N/A")
-            self.assertEqual(res_class_i["FalseNegative"]["rate"], 100)
-            self.assertEqual(res_class_i["FalsePositive"]["rate"], "N/A")
+            assert res_class_i["TruePositive"]["rate"] == 0
+            assert res_class_i["TrueNegative"]["rate"] == "N/A"
+            assert res_class_i["FalseNegative"]["rate"] == 100
+            assert res_class_i["FalsePositive"]["rate"] == "N/A"
 
-            self.assertEqual(res_class_i["TruePositive"]["numerator"], 0)
-            self.assertEqual(res_class_i["TruePositive"]["denominator"], self.n_dp)
+            assert res_class_i["TruePositive"]["numerator"] == 0
+            assert res_class_i["TruePositive"]["denominator"] == n_dp
 
-            self.assertEqual(res_class_i["TrueNegative"]["numerator"], 0)
-            self.assertEqual(res_class_i["TrueNegative"]["denominator"], 0)
+            assert res_class_i["TrueNegative"]["numerator"] == 0
+            assert res_class_i["TrueNegative"]["denominator"] == 0
 
-            self.assertEqual(res_class_i["FalseNegative"]["numerator"], self.n_dp)
-            self.assertEqual(res_class_i["FalseNegative"]["denominator"], self.n_dp)
+            assert res_class_i["FalseNegative"]["numerator"] == n_dp
+            assert res_class_i["FalseNegative"]["denominator"] == n_dp
 
-            self.assertEqual(res_class_i["FalsePositive"]["numerator"], 0)
-            self.assertEqual(res_class_i["FalsePositive"]["denominator"], 0)
+            assert res_class_i["FalsePositive"]["numerator"] == 0
+            assert res_class_i["FalsePositive"]["denominator"] == 0
 
             # all errors_by_class should be 3 (all_errors_by_class[i] = 3 marked clean, is poison)
             for item in errors_by_class[i]:
-                self.assertEqual(item, 3)
+                assert item == 3
+    except ARTTestException as e:
+        art_warning(e)
 
-    def test_analyze_fully_misclassified_rev(self):
+
+@pytest.mark.framework_agnostic
+def test_analyze_fully_misclassified_rev(art_warning, get_eval):
+    try:
         # Completely wrong
         # order parameters: analyze_correctness(assigned_clean_by_class, is_clean_by_class)
-        errors_by_class, conf_matrix_json = self.evaluator.analyze_correctness(
-            self.is_clean_all_poison, self.is_clean_all_clean
+        evaluator, is_clean_all_clean, is_clean_all_poison, is_clean_mixed = get_eval
+
+        errors_by_class, conf_matrix_json = evaluator.analyze_correctness(
+            is_clean_all_poison, is_clean_all_clean
         )
 
         json_object = json.loads(conf_matrix_json)
-        self.assertEqual(len(json_object.keys()), self.n_classes)
-        self.assertEqual(len(errors_by_class), self.n_classes)
+        assert len(json_object.keys()) == n_classes
+        assert len(errors_by_class) == n_classes
 
         pprint.pprint(json_object)
-        for i in range(self.n_classes):
+        for i in range(n_classes):
             res_class_i = json_object["class_" + str(i)]
-            self.assertEqual(res_class_i["TruePositive"]["rate"], "N/A")
-            self.assertEqual(res_class_i["TrueNegative"]["rate"], 0)
-            self.assertEqual(res_class_i["FalseNegative"]["rate"], "N/A")
-            self.assertEqual(res_class_i["FalsePositive"]["rate"], 100)
+            assert res_class_i["TruePositive"]["rate"] == "N/A"
+            assert res_class_i["TrueNegative"]["rate"] == 0
+            assert res_class_i["FalseNegative"]["rate"] == "N/A"
+            assert res_class_i["FalsePositive"]["rate"] == 100
 
-            self.assertEqual(res_class_i["TruePositive"]["numerator"], 0)
-            self.assertEqual(res_class_i["TruePositive"]["denominator"], 0)
+            assert res_class_i["TruePositive"]["numerator"] == 0
+            assert res_class_i["TruePositive"]["denominator"] == 0
 
-            self.assertEqual(res_class_i["TrueNegative"]["numerator"], 0)
-            self.assertEqual(res_class_i["TrueNegative"]["denominator"], self.n_dp)
+            assert res_class_i["TrueNegative"]["numerator"] == 0
+            assert res_class_i["TrueNegative"]["denominator"] == n_dp
 
-            self.assertEqual(res_class_i["FalseNegative"]["numerator"], 0)
-            self.assertEqual(res_class_i["FalseNegative"]["denominator"], 0)
+            assert res_class_i["FalseNegative"]["numerator"] == 0
+            assert res_class_i["FalseNegative"]["denominator"] == 0
 
-            self.assertEqual(res_class_i["FalsePositive"]["numerator"], self.n_dp)
-            self.assertEqual(res_class_i["FalsePositive"]["denominator"], self.n_dp)
+            assert res_class_i["FalsePositive"]["numerator"] == n_dp
+            assert res_class_i["FalsePositive"]["denominator"] == n_dp
 
             # all errors_by_class should be 3 (all_errors_by_class[i] = 2 if marked poison, is clean)
             for item in errors_by_class[i]:
-                self.assertEqual(item, 2)
+                assert item == 2
+    except ARTTestException as e:
+        art_warning(e)

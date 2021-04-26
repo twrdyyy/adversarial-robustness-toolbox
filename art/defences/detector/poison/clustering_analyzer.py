@@ -21,7 +21,7 @@ This module implements methodologies to analyze clusters and determine whether t
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import logging
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Union
 
 import numpy as np
 
@@ -49,8 +49,8 @@ class ClusteringAnalyzer:
         return assigned_clean
 
     def analyze_by_size(
-        self, separated_clusters: List[np.ndarray]
-    ) -> Tuple[np.ndarray, List[List[int]], Dict[str, int]]:
+        self, separated_clusters: Union[List[np.ndarray], List[List[int]]]
+    ) -> Tuple[np.ndarray, List[List[int]], Dict[str, Union[int, Dict]]]:
         """
         Designates as poisonous the cluster with less number of items on it.
 
@@ -76,6 +76,7 @@ class ClusteringAnalyzer:
 
             # assume that smallest cluster is poisonous and all others are clean
             sizes = np.bincount(clusters)
+            sizes = np.append(sizes, [0] * (nb_clusters - len(sizes)))
             total_dp_in_class = np.sum(sizes)
             poison_clusters: List[int] = [int(np.argmin(sizes))]
             clean_clusters = list(set(clusters) - set(poison_clusters))
@@ -193,11 +194,9 @@ class ClusteringAnalyzer:
         return all_assigned_clean, summary_poison_clusters, report
 
     def analyze_by_relative_size(
-        self,
-        separated_clusters: List[np.ndarray],
-        size_threshold: float = 0.35,
-        r_size: int = 2,
-    ) -> Tuple[np.ndarray, List[List[int]], Dict[str, int]]:
+            self, separated_clusters: Union[List[np.ndarray], List[List[int]]], size_threshold: float = 0.35,
+            r_size: int = 2,
+    ) -> Tuple[np.ndarray, List[List[int]], Dict[str, Union[int, Dict]]]:
         """
         Assigns a cluster as poisonous if the smaller one contains less than threshold of the data.
         This method assumes only 2 clusters
