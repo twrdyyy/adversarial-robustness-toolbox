@@ -49,6 +49,7 @@ class FeatureAdversaries(EvasionAttack):
 
     _estimator_requirements = (BaseEstimator, NeuralNetworkMixin)
 
+    # TODO delta can't be None!
     def __init__(
         self,
         classifier: "CLASSIFIER_NEURALNETWORK_TYPE",
@@ -69,9 +70,10 @@ class FeatureAdversaries(EvasionAttack):
         self.delta = delta
         self.layer = layer
         self.batch_size = batch_size
-        self.norm = np.inf
+        self.norm = np.inf # TODO nowhere used
         self._check_params()
 
+    # TODO attack requires a guide image y, can't be optional
     def generate(self, x: np.ndarray, y: Optional[np.ndarray] = None, **kwargs) -> np.ndarray:
         """
         Generate adversarial samples and return them in an array.
@@ -138,6 +140,7 @@ class FeatureAdversaries(EvasionAttack):
 
         bound = Bounds(lb=l_b, ub=u_b, keep_feasible=False)
 
+        # TODO using reshape for images won't work... e.g. simply using reshape for CHW -> HWC gives wrong results.
         guide_representation = self.estimator.get_activations(
             x=y.reshape(-1, *self.estimator.input_shape),  # type: ignore
             layer=self.layer,
@@ -145,6 +148,9 @@ class FeatureAdversaries(EvasionAttack):
         )
 
         def func(x_i):
+            # TODO torch default dtype is usually float32, but intermediate results of minimizer are float64 on PC
+            #      thus, res should be casted to same result as input x
+            x_i = x_i.astype(np.float32)
             source_representation = self.estimator.get_activations(
                 x=x_i.reshape(-1, *self.estimator.input_shape),
                 layer=self.layer,
