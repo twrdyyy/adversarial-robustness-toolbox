@@ -16,7 +16,7 @@
 # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 """
-This module implements the Feature Adversaries attack.
+This module implements the Feature Adversaries attack in PyTorch.
 
 | Paper link: https://arxiv.org/abs/1511.05122
 """
@@ -30,7 +30,8 @@ from art.attacks.attack import EvasionAttack
 from art.estimators.estimator import BaseEstimator, NeuralNetworkMixin
 
 if TYPE_CHECKING:
-    from torch import Tensor
+    # pylint: disable=C0412
+    import torch
     from torch.optim import Optimizer
 
     from art.utils import CLASSIFIER_NEURALNETWORK_TYPE
@@ -64,43 +65,44 @@ class FeatureAdversariesPyTorch(EvasionAttack):
         optimizer: Optional["Optimizer"] = None,
         optimizer_kwargs: Optional[dict] = None,
         delta: float = 15 / 255,
-        lambda_: float = 1.0,
+        lambda_: float = 0.0,
         layer: Optional[Union[int, str]] = -1,
         max_iter: int = 100,
         batch_size: int = 32,
+        step_size: Optional[Union[int, float]] = None,
         verbose: bool = True,
     ):
         """
         Create a :class:`.FeatureAdversariesPyTorch` instance.
 
         :param classifier: A trained classifier.
-        :param optimizer: Optimizer applied to problem (default: torch.optim.LBFGS).
+        :param optimizer: Optimizer applied to problem constrained only by clip values if defined, if None the
+                          Projected Gradient Descent (PGD) optimizer is used.
         :param optimizer_kwargs: Additional optimizer arguments.
         :param delta: The maximum deviation between source and guide images.
         :param lambda_: Regularization parameter of the L-inf soft constraint.
         :param layer: Index of the representation layer.
         :param max_iter: The maximum number of iterations.
         :param batch_size: Batch size.
+        :param step_size: Step size for PGD optimizer.
         :param verbose: Show progress bars.
         """
         super().__init__(estimator=classifier)
 
-        if optimizer is None:
-            from torch.optim import LBFGS
-
-            self._optimizer = LBFGS
+        self.optimizer = optimizer
         self._optimizer_kwargs = {} if optimizer_kwargs is None else optimizer_kwargs
         self.delta = delta
         self.lambda_ = lambda_
         self.layer = layer
         self.batch_size = batch_size
         self.max_iter = max_iter
+        self.step_size = step_size
         self.verbose = verbose
         self._check_params()
 
-    def _generate_batch(self, x: "Tensor", y: "Tensor") -> "Tensor":
+    def _generate_batch(self, x: "torch.Tensor", y: "torch.Tensor") -> "torch.Tensor":
         """
-        Generate adversarial batchy.
+        Generate adversarial batch.
 
         :param x: Source samples.
         :param y: Guide samples.
@@ -108,12 +110,7 @@ class FeatureAdversariesPyTorch(EvasionAttack):
         """
         import torch
 
-        adv = x.clone().detach().to(self.estimator.device)
-
         def loss_fn(source_orig, source_adv, guide):
-            # # clip perturbation
-            # perturbation = torch.clamp(adv - x, -self.delta, self.delta)
-            # adv = x + perturbation
 
             adv_representation = self.estimator.get_activations(source_adv, self.layer, self.batch_size, True)
             guide_representation = self.estimator.get_activations(guide, self.layer, self.batch_size, True)
@@ -125,37 +122,65 @@ class FeatureAdversariesPyTorch(EvasionAttack):
             representation_loss = torch.sum(torch.square(adv_representation - guide_representation), dim=dim)
 
             loss = torch.mean(representation_loss + self.lambda_ * soft_constraint)
+
             return loss
 
-        opt = self._optimizer(params=[adv], **self._optimizer_kwargs)
+        if self.optimizer is None:
 
-        for i in trange(self.max_iter, desc="Adversarial Patch TensorFlow v2", disable=not self.verbose):
+            adv = x.clone()
             adv.requires_grad = True
 
-            def closure():
-                if torch.is_grad_enabled():
-                    opt.zero_grad()
+            for i in trange(self.max_iter, desc="Feature Adversaries PyTorch", disable=not self.verbose):
+
                 loss = loss_fn(x, adv, y)
-                if loss.requires_grad:
-                    loss.backward()
-                return loss
+                self.estimator.model.zero_grad()
+                loss.backward()
 
-            opt.step(closure)
+                perturbation = -adv.grad.data.sign() * self.step_size
+                adv = adv + perturbation
+                perturbation = torch.clamp(adv.data - x.data, -self.delta, self.delta)
+                adv = torch.autograd.Variable(
+                    torch.clamp(x.data + perturbation, self.estimator.clip_values[0], self.estimator.clip_values[1]),
+                    requires_grad=True,
+                )
 
-            # with torch.no_grad():
-            #     # clip perturbation
-            #     perturbation = torch.clamp(adv - x, -self.delta, self.delta)
-            #     adv = x + perturbation
-            #     if self.estimator.clip_values is not None:
-            #         adv = adv.clamp(*self.estimator.clip_values)
+                # TODO remove block
+                with torch.no_grad():
+                    dim = tuple(range(0, len(adv.shape)))
+                    soft_constraint_tmp = torch.amax(torch.abs(adv - x), dim=dim)
+                    loss_tmp = loss_fn(x, adv, y).item()
+                print(f"Iter {i}, loss {loss_tmp}, constraint {soft_constraint_tmp}")
 
-            # TODO remove block later
-            with torch.no_grad():
-                dim = tuple(range(1, len(adv.shape)))
-                soft_constraint_tmp = torch.mean(torch.amax(torch.abs(adv - x), dim=dim)).item()
+        else:
 
-                loss_tmp = loss_fn(x, adv, y).item()
-            print(f"Iter {i}, loss {loss_tmp}, constraint {soft_constraint_tmp}")
+            adv = x.clone().detach().to(self.estimator.device)
+
+            opt = self.optimizer(params=[adv], **self._optimizer_kwargs)  # type: ignore
+
+            for i in trange(self.max_iter, desc="Feature Adversaries PyTorch", disable=not self.verbose):
+
+                adv.requires_grad = True
+
+                def closure():
+                    if torch.is_grad_enabled():
+                        opt.zero_grad()
+                    loss = loss_fn(x, adv, y)
+                    if loss.requires_grad:
+                        loss.backward()
+                    return loss
+
+                opt.step(closure)
+
+                with torch.no_grad():
+                    if self.estimator.clip_values is not None:
+                        adv[:] = adv.clamp(*self.estimator.clip_values)
+
+                # TODO remove block
+                with torch.no_grad():
+                    dim = tuple(range(0, len(adv.shape)))
+                    soft_constraint_tmp = torch.amax(torch.abs(adv - x), dim=dim)
+                    loss_tmp = loss_fn(x, adv, y).item()
+                print(f"Iter {i}, loss {loss_tmp}, constraint {soft_constraint_tmp}")
 
         return adv.detach().cpu()
 
@@ -203,7 +228,7 @@ class FeatureAdversariesPyTorch(EvasionAttack):
         if not isinstance(self.lambda_, float):
             raise ValueError("The value of lambda_ must be of type float.")
         if self.lambda_ < 0.0:
-            raise ValueError("The regularization parameter `lambda_` has to be nonnegative.")
+            raise ValueError("The regularization parameter `lambda_` has to be non-negative.")
 
         if not isinstance(self.layer, int) and not isinstance(self.layer, str):
             raise ValueError("The value of the representation layer must be integer or string.")
@@ -211,7 +236,14 @@ class FeatureAdversariesPyTorch(EvasionAttack):
         if not isinstance(self.max_iter, int):
             raise ValueError("The value of max_iter must be of type int.")
         if self.max_iter <= 0:
-            raise ValueError("The maxium number of iterations has to be a positive.")
+            raise ValueError("The maximum number of iterations has to be a positive.")
 
         if self.batch_size <= 0:
             raise ValueError("The batch size has to be positive.")
+
+        if self.optimizer is None and self.step_size is None:
+            raise ValueError("The step size cannot be None if optimizer is None.")
+        if self.step_size is not None and not isinstance(self.step_size, (int, float)):
+            raise ValueError("The value of step_size must be of type int or float.")
+        if self.step_size is not None and self.step_size <= 0:
+            raise ValueError("The step size has to be a positive.")
