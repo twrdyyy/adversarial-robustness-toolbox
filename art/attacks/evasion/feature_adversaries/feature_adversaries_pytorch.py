@@ -71,6 +71,7 @@ class FeatureAdversariesPyTorch(EvasionAttack):
         batch_size: int = 32,
         step_size: Optional[Union[int, float]] = None,
         verbose: bool = True,
+        random_start: bool = True,
     ):
         """
         Create a :class:`.FeatureAdversariesPyTorch` instance.
@@ -98,6 +99,7 @@ class FeatureAdversariesPyTorch(EvasionAttack):
         self.max_iter = max_iter
         self.step_size = step_size
         self.verbose = verbose
+        self.random_start = random_start
         self._check_params()
 
     def _generate_batch(self, x: "torch.Tensor", y: "torch.Tensor") -> "torch.Tensor":
@@ -111,7 +113,6 @@ class FeatureAdversariesPyTorch(EvasionAttack):
         import torch
 
         def loss_fn(source_orig, source_adv, guide):
-
             adv_representation = self.estimator.get_activations(source_adv, self.layer, self.batch_size, True)
             guide_representation = self.estimator.get_activations(guide, self.layer, self.batch_size, True)
 
@@ -122,20 +123,25 @@ class FeatureAdversariesPyTorch(EvasionAttack):
             representation_loss = torch.sum(torch.square(adv_representation - guide_representation), dim=dim)
 
             loss = torch.mean(representation_loss + self.lambda_ * soft_constraint)
-
             return loss
 
-        if self.optimizer is None:
+        self.estimator.model.eval()
 
-            adv = x.clone()
+        adv = x.clone().detach().to(self.estimator.device)
+        if self.random_start:
+            # Starting at a uniformly random point
+            adv = adv + torch.empty_like(adv).uniform_(-self.delta, self.delta)
+            adv = torch.clamp(adv, *self.estimator.clip_values).detach()
+
+        if self.optimizer is None:
+            # run a plain-vanilla PGD
             adv.requires_grad = True
 
             for i in trange(self.max_iter, desc="Feature Adversaries PyTorch", disable=not self.verbose):
-
                 loss = loss_fn(x, adv, y)
-                self.estimator.model.zero_grad()
                 loss.backward()
 
+                # pgd step
                 perturbation = -adv.grad.data.sign() * self.step_size
                 adv = adv + perturbation
                 perturbation = torch.clamp(adv.data - x.data, -self.delta, self.delta)
@@ -152,14 +158,13 @@ class FeatureAdversariesPyTorch(EvasionAttack):
                 print(f"Iter {i}, loss {loss_tmp}, constraint {soft_constraint_tmp}")
 
         else:
-
-            adv = x.clone().detach().to(self.estimator.device)
-
+            # optimize soft constraint problem with chosen optimzier
             opt = self.optimizer(params=[adv], **self._optimizer_kwargs)  # type: ignore
 
             for i in trange(self.max_iter, desc="Feature Adversaries PyTorch", disable=not self.verbose):
-
                 adv.requires_grad = True
+                # clip adversarial within L-Inf delta-ball
+                adv.data = x.detach() + torch.clamp(adv.detach() - x.detach(), -self.delta, self.delta).detach()
 
                 def closure():
                     if torch.is_grad_enabled():
@@ -168,12 +173,10 @@ class FeatureAdversariesPyTorch(EvasionAttack):
                     if loss.requires_grad:
                         loss.backward()
                     return loss
-
                 opt.step(closure)
 
-                with torch.no_grad():
-                    if self.estimator.clip_values is not None:
-                        adv[:] = adv.clamp(*self.estimator.clip_values)
+                if self.estimator.clip_values is not None:
+                    adv.data = torch.clamp(adv.detach(), *self.estimator.clip_values).detach()
 
                 # TODO remove block
                 with torch.no_grad():
