@@ -1513,3 +1513,8 @@ class ScikitlearnSVC(ClassGradientsMixin, LossGradientsMixin, ScikitlearnClassif
 
 
 ScikitlearnLinearSVC = ScikitlearnSVC
+
+class SckitlearnKNNClassifier(ScikitlearnClassifier):
+    pass
+
+
